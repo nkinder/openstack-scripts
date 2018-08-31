@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# NGK - some more stuff is needed to get tmate to work, as the options around
+# sessions appear to be a bit different than using tmux directly.
+if [ -n "$USE_TMATE" ]
+then
+    TMUX_CMD=tmate
+else
+    TMUX_CMD=tmux
+fi
+
+# Figure out how to connect to our undercloud and overcloud.  If tmux/tmate is being run
+# from a remote system other (as opposed to the system that hosts the OOO VMs), you must
+# set JUMPHOST to the ssh connection string for the hypervisor host.
+if [ -n "$JUMPHOST" ]
+then
+    UNDERCLOUD_SSH_CMD="ssh -tt $JUMPHOST 'ssh stack@undercloud-0'"
+    OVERCLOUD_IP=`ssh -tt $JUMPHOST "ssh stack@undercloud-0 'source stackrc && openstack server show controller-0 -f value -c addresses'" | sed 's/^.*=//'`
+    # We have to strip trailing chars that ssh adds on the local host
+    OVERCLOUD_IP=`echo $OVERCLOUD_IP | sed 's/[\r\n ]*$//'`
+    OVERCLOUD_SSH_CMD="ssh -tt $JUMPHOST 'ssh -tt -J stack@undercloud-0 heat-admin@$OVERCLOUD_IP'"
+else
+    UNDERCLOUD_SSH_CMD='ssh stack@undercloud-0'
+    OVERCLOUD_IP=`ssh stack@undercloud-0 'source stackrc && openstack server show controller-0 -f value -c addresses | sed 's/^.*=//''`
+    OVERCLOUD_SSH_CMD="ssh -tt -J stack@undercloud-0 heat-admin@$OVERCLOUD_IP"
+fi
+
+# Start tmux with separate windows for undercloud and overcloud
+$TMUX_CMD \
+    set-window-option -g allow-rename off \; \
+    new-session -d -s tripleo -n undercloud "$UNDERCLOUD_SSH_CMD" \; \
+    rename-window undercloud \; \
+    new-window -n overcloud "$OVERCLOUD_SSH_CMD"
+
+# Start a window in the keystone container if requested
+if [ -n "$KEYSTONE" ]
+then
+    $TMUX_CMD \
+        new-window -t tripleo -n oc-keystone "$OVERCLOUD_SSH_CMD 'sudo docker exec -it keystone /bin/bash'" \; \
+        split-window -t tripleo -h \; \
+        send-keys "$OVERCLOUD_SSH_CMD 'sudo docker exec -it keystone tail -f /var/log/keystone/keystone.log'" C-m
+fi
+
+# NGK - this probably is using the wrong container name
+# Start a window in the barbican container if requested
+if [ -b "$BARBICAN" ]
+then
+    $TMUX_CMD \
+        new-window -t tripleo -n oc-barbican "$OVERCLOUD_SSH_CMD 'sudo docker exec -it barbican /bin/bash'" \; \
+        split-window -t tripleo -h \; \
+        send-keys "$OVERCLOUD_SSH_CMD 'sudo docker exec -it barbican tail -f /var/log/barbican/barbican.log'" C-m
+fi
+
+# Attach to our session with the undercloud window selected
+$TMUX_CMD select-window -t tripleo:0
+$TMUX_CMD attach-session -t tripleo
