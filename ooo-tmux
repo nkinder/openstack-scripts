@@ -1,6 +1,44 @@
 #!/bin/bash
+#
+# --------------------------------- USAGE ------------------------------------
+# The ooo-tmux script is designed to establish a tmux session with a
+# TripleO virtual environment for development or testing purposes.
+#
+# This script assumes that the undercloud VM is accessible on the hypervisor
+# host via SSH using the 'stack' user and the 'undercloud-0' hostname.  The
+# script can be run directly on the system where the hypervisor is running,
+# or it can be run remotely using the JUMPHOST option to access the hypervisor
+# host.  To use the JUMPHOST option, you must set the JUMPHOST environment
+# variable to the SSH connection string to the hypervisor system.  Here is an
+# example:
+#
+#    $ JUMPHOST=root@10.0.1.101 ./ooo-tmux
+#
+# The above example will use the 10.0.1.101 system as a SSH jumphost, which
+# allows the SSH keys on the jumphost to be used to access the undercloud and
+# overcloud VMs.
+#
+# By default, ooo-tmux will create a tmux session with two windows as follows:
+#
+#    Window 0 - Undercloud (stack user)
+#    Window 1 - Overcloud controller 0 (heat-admin user)
+#
+# It is also possible to automatically open additional windows used to perform
+# tasks related to specific services.  Currently, there is only support for
+# doing this for the Keystone service.  By setting the KEYSTONE environment
+# variable to a non-NULL value, an additional tmux window will be opened up
+# with two side-by-side panes as follows:
+#
+#    Left pane - Shell into keystone container (root user)
+#    Right pane - Tail of keystone.log in keystone container (root user)
+#
+# Here is an example execution that will add this additional window:
+#
+#    $ JUMPHOST=root@10.0.1.101 KEYSTONE=1 ./ooo-tmux
+#
+# ----------------------------------------------------------------------------
 
-# NGK - some more stuff is needed to get tmate to work, as the options around
+# NGK(TODO) - some more stuff is needed to get tmate to work, as the options around
 # sessions appear to be a bit different than using tmux directly.
 if [ -n "$USE_TMATE" ]
 then
@@ -10,7 +48,7 @@ else
 fi
 
 # Figure out how to connect to our undercloud and overcloud.  If tmux/tmate is being run
-# from a remote system other (as opposed to the system that hosts the OOO VMs), you must
+# from a remote system (as opposed to the system that hosts the OOO VMs), you must
 # set JUMPHOST to the ssh connection string for the hypervisor host.
 if [ -n "$JUMPHOST" ]
 then
@@ -41,7 +79,8 @@ then
         send-keys "$OVERCLOUD_SSH_CMD 'sudo docker exec -it keystone tail -f /var/log/keystone/keystone.log'" C-m
 fi
 
-# NGK - this probably is using the wrong container name
+# NGK(TODO) - this probably is using the wrong container name.  Determine the correct
+# container name(s) and fix this.
 # Start a window in the barbican container if requested
 if [ -b "$BARBICAN" ]
 then
